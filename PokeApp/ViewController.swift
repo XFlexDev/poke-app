@@ -125,10 +125,26 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
                     display: none !important;
                 }
 
-                [data-silk-sheet-wrapper] {
-                    margin-top: max(env(safe-area-inset-top, 16px), 16px) !important;
-                    border-top-left-radius: 20px !important;
-                    border-top-right-radius: 20px !important;
+                /* FORCE IONIC SAFE AREA TOP VARIABLE (Prevents 0px notch collapse) */
+                :root, html, body, ion-app {
+                    --ion-safe-area-top: max(env(safe-area-inset-top, 47px), 47px) !important;
+                }
+
+                /* FIXED POPUP & MODAL SHEET TOP MARGIN */
+                [data-silk-sheet-wrapper],
+                ion-modal,
+                div[data-silk-sheet-wrapper] {
+                    margin-top: max(env(safe-area-inset-top, 47px), 47px) !important;
+                    max-height: calc(100vh - max(env(safe-area-inset-top, 47px), 47px)) !important;
+                    border-top-left-radius: 24px !important;
+                    border-top-right-radius: 24px !important;
+                    overflow: hidden !important;
+                }
+
+                /* Keep main home page edge-to-edge at top */
+                .ion-page[style*="z-index: 101"],
+                div.h-full.ion-page {
+                    margin-top: 0 !important;
                 }
             `;
             document.head.appendChild(style);
