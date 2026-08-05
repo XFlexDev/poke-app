@@ -1,74 +1,55 @@
-name: Build & Release Unsigned IPA
+name: Build Poke iOS IPA
 
 on:
-  push:
-    branches: [ "main", "master" ]
   workflow_dispatch:
-
-permissions:
-  contents: write
+    inputs:
+      release_tag:
+        description: 'Release Tag / Version (e.g., v1.0.25)'
+        required: false
+        default: ''
 
 jobs:
-  build-and-release:
+  build-ipa:
     runs-on: macos-14
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
-
-      - name: Process App Icon and Splash Screen Images
-        run: |
-          mkdir -p PokeApp/Assets.xcassets/AppIcon.appiconset
-          mkdir -p PokeApp/Assets.xcassets/LaunchLogo.imageset
-
-          if [ -f "poke.png" ]; then
-            sips -Z 1024 "poke.png" --out "PokeApp/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
-            echo "Processed poke.png -> AppIcon-1024.png"
-          fi
-
-          if [ -f "splash_screen.png" ]; then
-            sips -Z 360 "splash_screen.png" --out "PokeApp/Assets.xcassets/LaunchLogo.imageset/LaunchLogo.png"
-            echo "Processed splash_screen.png -> LaunchLogo.png"
-          fi
-
-      - name: Update Info.plist Build Version & Repo Key
-        run: |
-          plutil -replace CFBundleShortVersionString -string "1.0.${{ github.run_number }}" PokeApp/Info.plist
-          plutil -replace CFBundleVersion -string "${{ github.run_number }}" PokeApp/Info.plist
-          plutil -replace GitHubRepository -string "${{ github.repository }}" PokeApp/Info.plist
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode Project
-        run: |
-          xcodegen generate
-          sed -i '' 's/objectVersion = [0-9]*;/objectVersion = 56;/g' Poke.xcodeproj/project.pbxproj
+        run: xcodegen generate
 
-      - name: Build App for iOS (Unsigned)
+      - name: Build iOS App (.app)
         run: |
           xcodebuild -project Poke.xcodeproj \
-            -scheme Poke \
-            -sdk iphoneos \
-            -configuration Release \
-            -derivedDataPath build \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+                     -scheme Poke \
+                     -configuration Release \
+                     -sdk iphoneos \
+                     -derivedDataPath build \
+                     CODE_SIGN_IDENTITY="" \
+                     CODE_SIGNING_REQUIRED=NO \
+                     CODE_SIGNING_ALLOWED=NO
 
-      - name: Package Standalone IPA
+      - name: Package into .ipa
         run: |
           mkdir -p Payload
-          cp -R build/Build/Products/Release-iphoneos/Poke.app Payload/
+          cp -r build/Build/Products/Release-iphoneos/Poke.app Payload/
           zip -r Poke.ipa Payload
 
-      - name: Create GitHub Release with Direct IPA Asset
-        uses: softprops/action-gh-release@v2
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Poke iOS v1.0.${{ github.run_number }}
-          body_path: README.md
+          name: Poke.ipa
+          path: Poke.ipa
+
+      - name: Create Release (Optional if tag provided)
+        if: ${{ github.event.inputs.release_tag != '' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
           files: Poke.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
