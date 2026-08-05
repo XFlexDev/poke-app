@@ -10,9 +10,38 @@ on:
 jobs:
   build-ipa:
     runs-on: macos-14
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Increment Version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            NEW_VER="${{ github.event.inputs.release_tag }}"
+            NEW_VER="${NEW_VER#v}"
+            NEW_PATCH="${NEW_VER##*.}"
+          else
+            CUR_VER=$(plutil -extract CFBundleShortVersionString raw -o - PokeApp/Info.plist)
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$CUR_VER"
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VER="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          fi
+
+          plutil -replace CFBundleShortVersionString -string "${NEW_VER}" PokeApp/Info.plist
+          plutil -replace CFBundleVersion -string "${NEW_PATCH}" PokeApp/Info.plist
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PokeApp/Info.plist
+          git commit -m "Bump version to ${NEW_VER}" || true
+          git push || true
+
+          echo "TAG_NAME=v${NEW_VER}" >> $GITHUB_OUTPUT
 
       - name: Select Xcode
         run: |
@@ -53,10 +82,9 @@ jobs:
           path: Poke.ipa
 
       - name: Create Release
-        if: ${{ github.event.inputs.release_tag != '' }}
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.event.inputs.release_tag }}
+          tag_name: ${{ steps.version.outputs.TAG_NAME }}
           files: Poke.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
