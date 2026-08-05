@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release Tag / Version (e.g., v1.0.25)'
         required: false
         default: ''
 
@@ -13,16 +12,24 @@ jobs:
     runs-on: macos-14
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_16.1.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer || \
+          sudo xcode-select -s /Applications/Xcode_15.4.app/Contents/Developer
 
       - name: Install XcodeGen
         run: brew install xcodegen
 
       - name: Generate Xcode Project
-        run: xcodegen generate
+        run: |
+          rm -rf Poke.xcodeproj
+          xcodegen generate
 
-      - name: Build iOS App (.app)
+      - name: Build iOS App
         run: |
           xcodebuild -project Poke.xcodeproj \
                      -scheme Poke \
@@ -33,19 +40,19 @@ jobs:
                      CODE_SIGNING_REQUIRED=NO \
                      CODE_SIGNING_ALLOWED=NO
 
-      - name: Package into .ipa
+      - name: Package IPA
         run: |
           mkdir -p Payload
           cp -r build/Build/Products/Release-iphoneos/Poke.app Payload/
           zip -r Poke.ipa Payload
 
-      - name: Upload IPA Artifact
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Poke.ipa
           path: Poke.ipa
 
-      - name: Create Release (Optional if tag provided)
+      - name: Create Release
         if: ${{ github.event.inputs.release_tag != '' }}
         uses: softprops/action-gh-release@v1
         with:
