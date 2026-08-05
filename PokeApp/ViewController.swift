@@ -1,5 +1,9 @@
 import UIKit
 import WebKit
+import LocalAuthentication
+import AVFoundation
+import AudioToolbox
+import UserNotifications
 
 class CustomWebView: WKWebView {
     override var inputAccessoryView: UIView? {
@@ -17,6 +21,9 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
     private var splashOverlay: UIView!
     private var isSplashFaded = false
     
+    var pendingDeepLink: URL?
+    private let themeColor = UIColor(red: 17/255, green: 23/255, blue: 32/255, alpha: 1.0)
+    
     private let lightHaptic = UIImpactFeedbackGenerator(style: .light)
     private let mediumHaptic = UIImpactFeedbackGenerator(style: .medium)
     private let heavyHaptic = UIImpactFeedbackGenerator(style: .heavy)
@@ -25,12 +32,23 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .black
+        view.backgroundColor = themeColor
         prepareHaptics()
         setupWebView()
         setupSplashOverlay()
-        loadTargetURL()
+        
+        if let deepLink = pendingDeepLink {
+            handleDeepLink(deepLink)
+            pendingDeepLink = nil
+        } else {
+            loadTargetURL()
+        }
+        
         checkForUpdates()
+    }
+
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        return .lightContent
     }
 
     private func prepareHaptics() {
@@ -41,9 +59,23 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         notificationHaptic.prepare()
     }
 
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme?.lowercased() == "poke" else { return }
+        
+        let host = url.host?.lowercased() ?? ""
+        let path = url.path.lowercased()
+        
+        if host == "inbox" || path.contains("inbox") {
+            if let inboxURL = URL(string: "https://poke.com/inbox") {
+                let request = URLRequest(url: inboxURL)
+                webView?.load(request)
+            }
+        }
+    }
+
     private func setupSplashOverlay() {
         splashOverlay = UIView(frame: view.bounds)
-        splashOverlay.backgroundColor = .black
+        splashOverlay.backgroundColor = themeColor
         splashOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         
         if let logoImage = UIImage(named: "LaunchLogo") {
@@ -81,8 +113,20 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
     private func setupWebView() {
         let contentController = WKUserContentController()
         
-        contentController.add(self, name: "nativeHaptic")
-        contentController.add(self, name: "buttonPressedHandler")
+        let handlers = [
+            "nativeHaptic",
+            "nativeShare",
+            "nativeTorch",
+            "nativeClipboard",
+            "nativeBrightness",
+            "nativeAuthenticate",
+            "nativeSound",
+            "nativeBadge"
+        ]
+        
+        for handler in handlers {
+            contentController.add(self, name: handler)
+        }
         
         let jsScript = """
         (function() {
@@ -94,11 +138,60 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
             }
             meta.content = 'width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
+            window._pokeCallbacks = {};
+
             window.PokeNative = {
                 haptic: function(style) {
                     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeHaptic) {
                         window.webkit.messageHandlers.nativeHaptic.postMessage(style || 'medium');
                     }
+                },
+                share: function(options) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeShare) {
+                        window.webkit.messageHandlers.nativeShare.postMessage(options || {});
+                    }
+                },
+                setTorch: function(enabled) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeTorch) {
+                        window.webkit.messageHandlers.nativeTorch.postMessage(!!enabled);
+                    }
+                },
+                copyToClipboard: function(text) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeClipboard) {
+                        window.webkit.messageHandlers.nativeClipboard.postMessage(text || '');
+                    }
+                },
+                setBrightness: function(level) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBrightness) {
+                        window.webkit.messageHandlers.nativeBrightness.postMessage(level);
+                    }
+                },
+                playSound: function(soundId) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeSound) {
+                        window.webkit.messageHandlers.nativeSound.postMessage(soundId || 1057);
+                    }
+                },
+                setBadge: function(count) {
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.nativeBadge) {
+                        window.webkit.messageHandlers.nativeBadge.postMessage(count || 0);
+                    }
+                },
+                authenticate: function(reason) {
+                    return new Promise(function(resolve, reject) {
+                        var reqId = 'req_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+                        window._pokeCallbacks[reqId] = function(success, errorMsg) {
+                            if (success) {
+                                resolve(true);
+                            } else {
+                                reject(errorMsg || 'Authentication failed');
+                            }
+                            delete window._pokeCallbacks[reqId];
+                        };
+                        window.webkit.messageHandlers.nativeAuthenticate.postMessage({
+                            reason: reason || 'Unlock Poke feature',
+                            reqId: reqId
+                        });
+                    });
                 }
             };
 
@@ -124,13 +217,9 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
                 ::-webkit-scrollbar {
                     display: none !important;
                 }
-
-                /* FORCE IONIC SAFE AREA TOP VARIABLE (Prevents 0px notch collapse) */
                 :root, html, body, ion-app {
                     --ion-safe-area-top: max(env(safe-area-inset-top, 47px), 47px) !important;
                 }
-
-                /* FIXED POPUP & MODAL SHEET TOP MARGIN */
                 [data-silk-sheet-wrapper],
                 ion-modal,
                 div[data-silk-sheet-wrapper] {
@@ -140,8 +229,6 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
                     border-top-right-radius: 24px !important;
                     overflow: hidden !important;
                 }
-
-                /* Keep main home page edge-to-edge at top */
                 .ion-page[style*="z-index: 101"],
                 div.h-full.ion-page {
                     margin-top: 0 !important;
@@ -306,7 +393,7 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
         webView.scrollView.bounces = false
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.isOpaque = false
-        webView.backgroundColor = .black
+        webView.backgroundColor = themeColor
 
         webView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(webView)
@@ -444,27 +531,77 @@ class ViewController: UIViewController, WKScriptMessageHandler, WKNavigationDele
 
     // MARK: - WKScriptMessageHandler
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        if message.name == "nativeHaptic" {
+        switch message.name {
+        case "nativeHaptic":
             if let type = message.body as? String {
                 switch type {
-                case "light":
-                    lightHaptic.impactOccurred()
-                case "medium":
-                    mediumHaptic.impactOccurred()
-                case "heavy":
-                    heavyHaptic.impactOccurred()
-                case "selection":
-                    selectionHaptic.selectionChanged()
-                case "success":
-                    notificationHaptic.notificationOccurred(.success)
-                case "warning":
-                    notificationHaptic.notificationOccurred(.warning)
-                case "error":
-                    notificationHaptic.notificationOccurred(.error)
-                default:
-                    mediumHaptic.impactOccurred()
+                case "light": lightHaptic.impactOccurred()
+                case "medium": mediumHaptic.impactOccurred()
+                case "heavy": heavyHaptic.impactOccurred()
+                case "selection": selectionHaptic.selectionChanged()
+                case "success": notificationHaptic.notificationOccurred(.success)
+                case "warning": notificationHaptic.notificationOccurred(.warning)
+                case "error": notificationHaptic.notificationOccurred(.error)
+                default: mediumHaptic.impactOccurred()
                 }
             }
+        case "nativeShare":
+            if let dict = message.body as? [String: Any] {
+                var items: [Any] = []
+                if let text = dict["text"] as? String { items.append(text) }
+                if let urlString = dict["url"] as? String, let url = URL(string: urlString) { items.append(url) }
+                guard !items.isEmpty else { return }
+                let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
+                present(activityVC, animated: true)
+            }
+        case "nativeTorch":
+            if let enable = message.body as? Bool,
+               let device = AVCaptureDevice.default(for: .video), device.hasTorch {
+                try? device.lockForConfiguration()
+                device.torchMode = enable ? .on : .off
+                device.unlockForConfiguration()
+            }
+        case "nativeClipboard":
+            if let text = message.body as? String {
+                UIPasteboard.general.string = text
+                notificationHaptic.notificationOccurred(.success)
+            }
+        case "nativeBrightness":
+            if let level = message.body as? Double {
+                UIScreen.main.brightness = CGFloat(level)
+            }
+        case "nativeSound":
+            if let soundId = message.body as? UInt32 {
+                AudioServicesPlaySystemSound(soundId)
+            }
+        case "nativeBadge":
+            if let count = message.body as? Int {
+                if #available(iOS 16.0, *) {
+                    UNUserNotificationCenter.current().setBadgeCount(count)
+                } else {
+                    UIApplication.shared.applicationIconBadgeNumber = count
+                }
+            }
+        case "nativeAuthenticate":
+            if let dict = message.body as? [String: String],
+               let reason = dict["reason"],
+               let reqId = dict["reqId"] {
+                let context = LAContext()
+                var error: NSError?
+                if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
+                    context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { [weak self] success, evalError in
+                        DispatchQueue.main.async {
+                            let js = "window._pokeCallbacks['\(reqId)'](\(success), '\(evalError?.localizedDescription ?? "")');"
+                            self?.webView.evaluateJavaScript(js, completionHandler: nil)
+                        }
+                    }
+                } else {
+                    let js = "window._pokeCallbacks['\(reqId)'](false, 'Biometrics not available');"
+                    webView.evaluateJavaScript(js, completionHandler: nil)
+                }
+            }
+        default:
+            break
         }
     }
 }
