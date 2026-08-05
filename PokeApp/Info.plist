@@ -18,6 +18,28 @@
     <string>XFlexDev/poke-app</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+
+    <!-- Custom URL Scheme (poke://inbox) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.poke.app</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>poke</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- Native Hardware Permissions -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Authenticate to access protected features in Poke.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Camera access is required for flashlight and scanning features.</string>
+
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
