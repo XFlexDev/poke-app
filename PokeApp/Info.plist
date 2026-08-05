@@ -19,7 +19,7 @@
     <key>LSRequiresIPhoneOS</key>
     <true/>
 
-    <!-- Custom URL Scheme (poke://inbox) -->
+    <!-- Custom URL Scheme for Shortcuts & Deep Linking (poke://inbox) -->
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
@@ -34,7 +34,7 @@
         </dict>
     </array>
 
-    <!-- Native Hardware Permissions -->
+    <!-- Native Hardware Usage Descriptions -->
     <key>NSFaceIDUsageDescription</key>
     <string>Authenticate to access protected features in Poke.</string>
     <key>NSCameraUsageDescription</key>
