@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "16.0"
   xcodeVersion: "15.0"
+  objectVersion: 56   # <-- Forces Xcode 15 project format compatibility
 targets:
   Poke:
     type: application
