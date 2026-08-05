@@ -10,10 +10,18 @@ targets:
     type: application
     platform: iOS
     sources: [PokeApp]
+    info:
+      path: PokeApp/Info.plist
+      urlTypes:
+        - name: com.poke.app
+          role: Editor
+          schemes:
+            - poke
     settings:
       PRODUCT_NAME: "Poke"
       PRODUCT_BUNDLE_IDENTIFIER: com.poke.app
       INFOPLIST_FILE: PokeApp/Info.plist
+      GENERATE_INFOPLIST_FILE: "NO"
       DEVELOPMENT_TEAM: ""
       CODE_SIGNING_REQUIRED: "NO"
       CODE_SIGN_IDENTITY: ""
